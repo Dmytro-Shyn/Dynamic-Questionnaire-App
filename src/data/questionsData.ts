@@ -3,29 +3,24 @@ import type { QuestionnaireConfig } from '@/types/questionnaire'
 /**
  * Demo questionnaire: "Product Finder".
  *
- * The flow demonstrates every supported feature:
- *  - option-level branching (`category`),
- *  - numeric rules with gte / lt (`budget`),
- *  - array rule with contains (`features`),
- *  - plain fallback `next`,
- *  - all four question types (single, multiple, text, number).
+ * The flow demonstrates every supported feature, and each category follows its
+ * own independent branch (separate budget, brand and feature questions):
  *
- * Node graph:
- *   category ─ smartphone ─┐
- *   category ─ laptop ──> laptop_use ─ gaming ─> laptop_gpu ─┐
- *   category ─ headphones -> headphones_type ────────────────┤
- *   category ─ other ────────────────────────────────────────┤
- *                                                            v
- *   budget (gte 1500 ─> brand_premium)  (lt 1500 ─> brand_midrange)
- *            │                                       │
- *            v                                       v
- *       brand_premium                          brand_midrange
- *            └───────────────> features ── contains gaming ─> gaming_detail
- *                                         │                      │
- *                                         └──> color <────────────┘
- *                                              │
- *                                              v
- *                                           contact ─> (done)
+ *   - option-level redirect        (laptop_use → laptop_gpu)
+ *   - numeric rules  gte / lt      (each category's `*_budget`)
+ *   - array rule    contains       (phone_features → gaming_detail,
+ *                                   headphone_features → anc_priority)
+ *   - plain fallback `next`
+ *   - all four question types (single, multiple, text, number)
+ *
+ * Branches:
+ *   smartphone  ─ os ─> features ─contains gaming─> gaming_detail ─> budget ─> brand ─> contact
+ *   laptop      ─ use ─contains gaming─> gpu ─> features ─> budget ─> brand ─> contact
+ *   headphones  ─ type ─> features ─contains nc─> anc_priority ─> budget ─> brand ─> contact
+ *   other       ─> budget ─> contact
+ *
+ * `contact` is a terminal question (`next: null`) shared by every branch only
+ * because it captures delivery contact info and carries no category meaning.
  */
 export const questionnaireConfig = {
   id: 'product-finder',
@@ -40,18 +35,123 @@ export const questionnaireConfig = {
       title: 'What are you looking for?',
       description: 'Choose the category you want us to recommend.',
       options: [
-        { id: 'smartphone', label: 'Smartphone' },
+        { id: 'smartphone', label: 'Smartphone', nextQuestionId: 'phone_os' },
         { id: 'laptop', label: 'Laptop', nextQuestionId: 'laptop_use' },
         {
           id: 'headphones',
           label: 'Headphones',
           nextQuestionId: 'headphones_type',
         },
-        { id: 'other', label: 'Something else' },
+        {
+          id: 'other',
+          label: 'Something else',
+          nextQuestionId: 'other_budget',
+        },
       ],
-      next: 'budget',
+      next: null,
       validation: { required: true },
     },
+
+    {
+      id: 'other_budget',
+      type: 'number',
+      title: 'What is your approximate budget?',
+      description: 'Enter a number in USD.',
+      validation: { required: true, min: 0, max: 100000 },
+      next: 'contact',
+    },
+
+    // ── smartphone ─────────────────────────────────────────────
+    {
+      id: 'phone_os',
+      type: 'single',
+      title: 'Which operating system do you prefer?',
+      options: [
+        { id: 'ios', label: 'iOS' },
+        { id: 'android', label: 'Android' },
+        { id: 'no_os', label: 'No preference' },
+      ],
+      next: 'phone_features',
+      validation: { required: true },
+    },
+    {
+      id: 'phone_features',
+      type: 'multiple',
+      title: 'Which phone features matter to you?',
+      description: 'Select all that apply.',
+      options: [
+        { id: 'camera', label: 'Great camera' },
+        { id: 'battery', label: 'Long battery life' },
+        { id: 'screen', label: 'High refresh rate display' },
+        { id: 'gaming', label: 'Gaming performance' },
+        { id: 'connectivity', label: '5G / latest connectivity' },
+      ],
+      rules: [
+        {
+          operator: 'contains',
+          value: 'gaming',
+          nextQuestionId: 'gaming_detail',
+        },
+      ],
+      next: 'phone_budget',
+      validation: { required: true },
+    },
+    {
+      id: 'gaming_detail',
+      type: 'single',
+      title: 'How serious is your mobile gaming?',
+      options: [
+        { id: 'competitive', label: 'Competitive — I need max performance' },
+        { id: 'casual', label: 'Casual — good frame rates' },
+        { id: 'light', label: 'Light — occasional sessions' },
+      ],
+      next: 'phone_budget',
+      validation: { required: true },
+    },
+    {
+      id: 'phone_budget',
+      type: 'number',
+      title: 'What is your maximum budget?',
+      description: 'Premium phones start around $1000.',
+      validation: { required: true, min: 0, max: 100000 },
+      rules: [
+        { operator: 'gte', value: 1000, nextQuestionId: 'phone_brand_premium' },
+        {
+          questionId: 'phone_budget',
+          operator: 'lt',
+          value: 1000,
+          nextQuestionId: 'phone_brand_midrange',
+        },
+      ],
+    },
+    {
+      id: 'phone_brand_premium',
+      type: 'single',
+      title: 'Which premium phone brand?',
+      options: [
+        { id: 'Apple', label: 'Apple' },
+        { id: 'Samsung', label: 'Samsung' },
+        { id: 'Sony', label: 'Sony' },
+        { id: 'no_brand', label: 'No preference' },
+      ],
+      next: 'contact',
+      validation: { required: true },
+    },
+    {
+      id: 'phone_brand_midrange',
+      type: 'single',
+      title: 'Which brand?',
+      options: [
+        { id: 'Xiaomi', label: 'Xiaomi' },
+        { id: 'OnePlus', label: 'OnePlus' },
+        { id: 'Motorola', label: 'Motorola' },
+        { id: 'no_brand', label: 'No preference' },
+      ],
+      next: 'contact',
+      validation: { required: true },
+    },
+
+    // ── laptop ───────────────────────────────────────────────
     {
       id: 'laptop_use',
       type: 'single',
@@ -59,14 +159,10 @@ export const questionnaireConfig = {
       options: [
         { id: 'work', label: 'Work / office' },
         { id: 'study', label: 'Study' },
-        {
-          id: 'gaming',
-          label: 'Gaming',
-          nextQuestionId: 'laptop_gpu',
-        },
+        { id: 'gaming', label: 'Gaming', nextQuestionId: 'laptop_gpu' },
         { id: 'universal', label: 'Everything a bit' },
       ],
-      next: 'budget',
+      next: 'laptop_features',
       validation: { required: true },
     },
     {
@@ -77,9 +173,74 @@ export const questionnaireConfig = {
         { id: 'dedicated', label: 'Yes, a dedicated GPU' },
         { id: 'integrated', label: 'Integrated is fine' },
       ],
-      next: 'budget',
+      next: 'laptop_features',
       validation: { required: true },
     },
+    {
+      id: 'laptop_features',
+      type: 'multiple',
+      title: 'Which laptop features matter to you?',
+      description: 'Select all that apply.',
+      options: [
+        { id: 'gaming', label: 'Gaming performance' },
+        { id: 'battery', label: 'Long battery life' },
+        { id: 'portability', label: 'Lightweight / portable' },
+        { id: 'display', label: 'High quality display' },
+        { id: 'build', label: 'Premium build quality' },
+      ],
+      next: 'laptop_budget',
+      validation: { required: true },
+    },
+    {
+      id: 'laptop_budget',
+      type: 'number',
+      title: 'What is your maximum budget?',
+      description: 'Premium laptops start around $1500.',
+      validation: { required: true, min: 0, max: 100000 },
+      rules: [
+        {
+          operator: 'gte',
+          value: 1500,
+          nextQuestionId: 'laptop_brand_premium',
+        },
+        {
+          questionId: 'laptop_budget',
+          operator: 'lt',
+          value: 1500,
+          nextQuestionId: 'laptop_brand_midrange',
+        },
+      ],
+    },
+    {
+      id: 'laptop_brand_premium',
+      type: 'single',
+      title: 'Which premium laptop brand?',
+      options: [
+        { id: 'Apple', label: 'Apple' },
+        { id: 'Lenovo', label: 'Lenovo' },
+        { id: 'ASUS', label: 'Asus' },
+        { id: 'Dell', label: 'Dell' },
+        { id: 'no_brand', label: 'No preference' },
+      ],
+      next: 'contact',
+      validation: { required: true },
+    },
+    {
+      id: 'laptop_brand_midrange',
+      type: 'single',
+      title: 'Which brand?',
+      options: [
+        { id: 'Lenovo', label: 'Lenovo' },
+        { id: 'ASUS', label: 'Asus' },
+        { id: 'Acer', label: 'Acer' },
+        { id: 'HP', label: 'HP' },
+        { id: 'no_brand', label: 'No preference' },
+      ],
+      next: 'contact',
+      validation: { required: true },
+    },
+
+    // ── headphones ───────────────────────────────────────────
     {
       id: 'headphones_type',
       type: 'single',
@@ -89,104 +250,90 @@ export const questionnaireConfig = {
         { id: 'over_ear', label: 'Over-ear' },
         { id: 'wireless', label: 'True wireless' },
       ],
-      next: 'budget',
+      next: 'headphone_features',
       validation: { required: true },
     },
     {
-      id: 'budget',
+      id: 'headphone_features',
+      type: 'multiple',
+      title: 'Which headphone features matter to you?',
+      description: 'Select all that apply.',
+      options: [
+        { id: 'noise_cancelling', label: 'Active noise cancellation' },
+        { id: 'battery', label: 'Long battery life' },
+        { id: 'comfort', label: 'Comfortable for long sessions' },
+        { id: 'wireless', label: 'Reliable wireless' },
+        { id: 'mic', label: 'Good microphone' },
+      ],
+      rules: [
+        {
+          operator: 'contains',
+          value: 'noise_cancelling',
+          nextQuestionId: 'anc_priority',
+        },
+      ],
+      next: 'headphones_budget',
+      validation: { required: true },
+    },
+    {
+      id: 'anc_priority',
+      type: 'single',
+      title: 'How important is active noise cancellation?',
+      options: [
+        { id: 'must_have', label: 'Must have' },
+        { id: 'nice_to_have', label: 'Nice to have' },
+      ],
+      next: 'headphones_budget',
+      validation: { required: true },
+    },
+    {
+      id: 'headphones_budget',
       type: 'number',
       title: 'What is your maximum budget?',
-      description: 'Enter a number in USD. Premium products start at $1500.',
+      description: 'Premium headphones start around $300.',
       validation: { required: true, min: 0, max: 100000 },
       rules: [
         {
           operator: 'gte',
-          value: 1500,
-          nextQuestionId: 'brand_premium',
+          value: 300,
+          nextQuestionId: 'headphones_brand_premium',
         },
         {
-          questionId: 'budget',
+          questionId: 'headphones_budget',
           operator: 'lt',
-          value: 1500,
-          nextQuestionId: 'brand_midrange',
+          value: 300,
+          nextQuestionId: 'headphones_brand_midrange',
         },
       ],
     },
     {
-      id: 'brand_premium',
+      id: 'headphones_brand_premium',
       type: 'single',
-      title: 'Any preferred premium brand?',
+      title: 'Which premium headphone brand?',
       options: [
-        { id: 'apple', label: 'Apple' },
-        { id: 'samsung', label: 'Samsung' },
-        { id: 'sony', label: 'Sony' },
-        { id: 'asus', label: 'Asus' },
-        { id: 'no_preference', label: 'No preference' },
-      ],
-      next: 'features',
-      validation: { required: true },
-    },
-    {
-      id: 'brand_midrange',
-      type: 'single',
-      title: 'Any preferred brand?',
-      options: [
-        { id: 'xiaomi', label: 'Xiaomi' },
-        { id: 'lenovo', label: 'Lenovo' },
-        { id: 'huawei', label: 'Huawei' },
-        { id: 'anker', label: 'Anker' },
-        { id: 'no_preference', label: 'No preference' },
-      ],
-      next: 'features',
-      validation: { required: true },
-    },
-    {
-      id: 'features',
-      type: 'multiple',
-      title: 'Which features matter to you?',
-      description: 'Select all that apply.',
-      options: [
-        { id: 'battery', label: 'Long battery life' },
-        { id: 'camera', label: 'Great camera' },
-        { id: 'gaming', label: 'Gaming performance' },
-        { id: 'portability', label: 'Lightweight / portable' },
-        { id: 'audio', label: 'Excellent audio' },
-      ],
-      validation: { required: true },
-      rules: [
-        {
-          operator: 'contains',
-          value: 'gaming',
-          nextQuestionId: 'gaming_detail',
-        },
-      ],
-      next: 'color',
-    },
-    {
-      id: 'gaming_detail',
-      type: 'single',
-      title: 'How serious is your gaming?',
-      options: [
-        { id: 'hardcore', label: 'Hardcore — max settings' },
-        { id: 'casual', label: 'Casual — good frame rates' },
-        { id: 'light', label: 'Light — occasional sessions' },
-      ],
-      next: 'color',
-      validation: { required: true },
-    },
-    {
-      id: 'color',
-      type: 'single',
-      title: 'Color preference?',
-      options: [
-        { id: 'dark', label: 'Dark / black' },
-        { id: 'light', label: 'Light / white' },
-        { id: 'colorful', label: 'Colorful' },
-        { id: 'no_preference', label: 'No preference' },
+        { id: 'Sony', label: 'Sony' },
+        { id: 'Bose', label: 'Bose' },
+        { id: 'Sennheiser', label: 'Sennheiser' },
+        { id: 'no_brand', label: 'No preference' },
       ],
       next: 'contact',
       validation: { required: true },
     },
+    {
+      id: 'headphones_brand_midrange',
+      type: 'single',
+      title: 'Which brand?',
+      options: [
+        { id: 'JBL', label: 'JBL' },
+        { id: 'Anker', label: 'Anker' },
+        { id: 'Sony', label: 'Sony' },
+        { id: 'no_brand', label: 'No preference' },
+      ],
+      next: 'contact',
+      validation: { required: true },
+    },
+
+    // ── shared terminal ──────────────────────────────────────
     {
       id: 'contact',
       type: 'text',

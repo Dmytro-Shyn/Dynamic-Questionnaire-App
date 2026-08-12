@@ -103,6 +103,21 @@ There is **no per-question UI code**. `src/data/questionsData.ts` is a typed
 config describes, and `src/utils/questionEngine.ts` walks it. Adding a question
 is just adding an entry to the array.
 
+Each product category (smartphone, laptop, headphones, other) follows its **own
+independent branch** with category-specific questions — budget, brand and
+feature questions are answered per branch, so a headphones user is never asked
+about cameras. The branches only share the final `contact` (email capture) step.
+
+Branch overview:
+
+```
+category
+├── smartphone ─ os ─> features ─contains gaming─> gaming_detail ─> budget ─> brand ─> contact
+├── laptop ─ use ─(gaming)─> gpu ─> features ─> budget ─> brand ─> contact
+├── headphones ─ type ─> features ─contains nc─> anc_priority ─> budget ─> brand ─> contact
+└── other ─> budget ─> contact
+```
+
 ### How the next question is resolved
 
 `getNextQuestionId(currentQuestion, answers, allQuestions)` in
@@ -205,8 +220,8 @@ Set the `VITE_ALGOLIA_*` environment variables, or edit the defaults in
 
 ## Testing
 
-47 unit tests cover the navigation engine, validation and the Algolia query
-builder. Run `npm run test`.
+53 unit tests cover the navigation engine, validation, the Algolia query
+builder and the Redux flow. Run `npm run test`.
 
 ## AI-friendly notes
 

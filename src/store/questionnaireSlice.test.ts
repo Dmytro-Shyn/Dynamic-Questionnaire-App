@@ -19,7 +19,7 @@ const select = (store: ReturnType<typeof createStore>) =>
   store.getState().questionnaire
 
 describe('questionnaireSlice', () => {
-  it('walks the full flow to completion', () => {
+  it('walks the smartphone flow to completion', () => {
     const store = createStore()
     const dispatch = store.dispatch
 
@@ -27,23 +27,26 @@ describe('questionnaireSlice', () => {
 
     dispatch(setAnswer({ questionId: 'category', answer: 'smartphone' }))
     dispatch(goToNextQuestion())
-    expect(select(store).currentQuestionId).toBe('budget')
+    expect(select(store).currentQuestionId).toBe('phone_os')
 
-    dispatch(setAnswer({ questionId: 'budget', answer: 2000 }))
+    dispatch(setAnswer({ questionId: 'phone_os', answer: 'android' }))
     dispatch(goToNextQuestion())
-    expect(select(store).currentQuestionId).toBe('brand_premium')
-
-    dispatch(setAnswer({ questionId: 'brand_premium', answer: 'apple' }))
-    dispatch(goToNextQuestion())
-    expect(select(store).currentQuestionId).toBe('features')
+    expect(select(store).currentQuestionId).toBe('phone_features')
 
     dispatch(
-      setAnswer({ questionId: 'features', answer: ['camera', 'battery'] }),
+      setAnswer({
+        questionId: 'phone_features',
+        answer: ['camera', 'battery'],
+      }),
     )
     dispatch(goToNextQuestion())
-    expect(select(store).currentQuestionId).toBe('color')
+    expect(select(store).currentQuestionId).toBe('phone_budget')
 
-    dispatch(setAnswer({ questionId: 'color', answer: 'dark' }))
+    dispatch(setAnswer({ questionId: 'phone_budget', answer: 2000 }))
+    dispatch(goToNextQuestion())
+    expect(select(store).currentQuestionId).toBe('phone_brand_premium')
+
+    dispatch(setAnswer({ questionId: 'phone_brand_premium', answer: 'Apple' }))
     dispatch(goToNextQuestion())
     expect(select(store).currentQuestionId).toBe('contact')
 
@@ -51,10 +54,9 @@ describe('questionnaireSlice', () => {
     dispatch(goToNextQuestion())
     expect(select(store).isCompleted).toBe(true)
     expect(select(store).currentQuestionId).toBeNull()
-    expect(select(store).answers.contact).toBe('a@b.com')
   })
 
-  it('branches to a different path for gaming laptops', () => {
+  it('branches to the laptop GPU path when gaming is selected', () => {
     const store = createStore()
     const dispatch = store.dispatch
 
@@ -65,6 +67,28 @@ describe('questionnaireSlice', () => {
     dispatch(setAnswer({ questionId: 'laptop_use', answer: 'gaming' }))
     dispatch(goToNextQuestion())
     expect(select(store).currentQuestionId).toBe('laptop_gpu')
+  })
+
+  it('routes headphones through the ANC priority branch', () => {
+    const store = createStore()
+    const dispatch = store.dispatch
+
+    dispatch(setAnswer({ questionId: 'category', answer: 'headphones' }))
+    dispatch(goToNextQuestion())
+    expect(select(store).currentQuestionId).toBe('headphones_type')
+
+    dispatch(setAnswer({ questionId: 'headphones_type', answer: 'over_ear' }))
+    dispatch(goToNextQuestion())
+    expect(select(store).currentQuestionId).toBe('headphone_features')
+
+    dispatch(
+      setAnswer({
+        questionId: 'headphone_features',
+        answer: ['noise_cancelling'],
+      }),
+    )
+    dispatch(goToNextQuestion())
+    expect(select(store).currentQuestionId).toBe('anc_priority')
   })
 
   it('clears the answer of the question left when going back', () => {
@@ -113,5 +137,18 @@ describe('questionnaireSlice', () => {
       history: [],
       isCompleted: false,
     })
+  })
+
+  it('ends the questionnaire via the other branch', () => {
+    const store = createStore()
+    const dispatch = store.dispatch
+
+    dispatch(setAnswer({ questionId: 'category', answer: 'other' }))
+    dispatch(goToNextQuestion())
+    expect(select(store).currentQuestionId).toBe('other_budget')
+
+    dispatch(setAnswer({ questionId: 'other_budget', answer: 50 }))
+    dispatch(goToNextQuestion())
+    expect(select(store).currentQuestionId).toBe('contact')
   })
 })

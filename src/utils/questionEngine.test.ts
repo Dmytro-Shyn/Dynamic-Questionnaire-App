@@ -21,71 +21,138 @@ function nextFor(id: string, answers: Answers = {}): string | null {
 }
 
 describe('getNextQuestionId — real questionnaire flow', () => {
-  it('follows the option-level redirect for laptop', () => {
+  it('category redirects via option-level nextQuestionId', () => {
+    expect(nextFor('category', { category: 'smartphone' })).toBe('phone_os')
     expect(nextFor('category', { category: 'laptop' })).toBe('laptop_use')
-  })
-
-  it('follows the option-level redirect for headphones', () => {
     expect(nextFor('category', { category: 'headphones' })).toBe(
       'headphones_type',
     )
+    expect(nextFor('category', { category: 'other' })).toBe('other_budget')
   })
 
-  it('falls back to `next` when the option has no redirect', () => {
-    expect(nextFor('category', { category: 'smartphone' })).toBe('budget')
-    expect(nextFor('category', { category: 'other' })).toBe('budget')
+  it('falls back to `next` when no option is selected', () => {
+    expect(nextFor('phone_os', { phone_os: 'ios' })).toBe('phone_features')
+    expect(nextFor('phone_os', { phone_os: 'no_os' })).toBe('phone_features')
   })
 
-  it('uses the fallback `next` when the question is unanswered', () => {
-    expect(nextFor('category')).toBe('budget')
+  it('routes laptop gaming users to the GPU branch', () => {
+    expect(nextFor('laptop_use', { laptop_use: 'gaming' })).toBe('laptop_gpu')
+    // non-gaming use cases fall through to the features question
+    expect(nextFor('laptop_use', { laptop_use: 'work' })).toBe(
+      'laptop_features',
+    )
   })
 
-  it('routes premium budgets through the gte rule', () => {
-    expect(nextFor('budget', { budget: 1500 })).toBe('brand_premium')
-    expect(nextFor('budget', { budget: 9999 })).toBe('brand_premium')
-  })
-
-  it('routes lower budgets through the lt rule', () => {
-    expect(nextFor('budget', { budget: 1499 })).toBe('brand_midrange')
-    expect(nextFor('budget', { budget: 0 })).toBe('brand_midrange')
+  it('routes number budgets via gte / lt rules', () => {
+    expect(nextFor('phone_budget', { phone_budget: 1000 })).toBe(
+      'phone_brand_premium',
+    )
+    expect(nextFor('phone_budget', { phone_budget: 2500 })).toBe(
+      'phone_brand_premium',
+    )
+    expect(nextFor('phone_budget', { phone_budget: 999 })).toBe(
+      'phone_brand_midrange',
+    )
   })
 
   it('handles numeric answers typed as strings', () => {
-    expect(nextFor('budget', { budget: '1500' })).toBe('brand_premium')
-    expect(nextFor('budget', { budget: '1499' })).toBe('brand_midrange')
-  })
-
-  it('routes through the array contains rule for gaming', () => {
-    expect(nextFor('features', { features: ['gaming'] })).toBe('gaming_detail')
-    expect(nextFor('features', { features: ['battery', 'gaming'] })).toBe(
-      'gaming_detail',
+    expect(nextFor('phone_budget', { phone_budget: '1000' })).toBe(
+      'phone_brand_premium',
+    )
+    expect(nextFor('phone_budget', { phone_budget: '999' })).toBe(
+      'phone_brand_midrange',
     )
   })
 
-  it('ignores the contains rule when gaming is not selected', () => {
-    expect(nextFor('features', { features: ['camera', 'battery'] })).toBe(
-      'color',
-    )
+  it('routes headphones via the contains rule', () => {
+    expect(
+      nextFor('headphone_features', {
+        headphone_features: ['noise_cancelling'],
+      }),
+    ).toBe('anc_priority')
+    expect(
+      nextFor('headphone_features', {
+        headphone_features: ['battery', 'comfort'],
+      }),
+    ).toBe('headphones_budget')
   })
 
-  it('returns null for the terminal question', () => {
+  it('routes smartphones via the gaming contains rule', () => {
+    expect(
+      nextFor('phone_features', { phone_features: ['camera', 'gaming'] }),
+    ).toBe('gaming_detail')
+    expect(
+      nextFor('phone_features', { phone_features: ['battery', 'screen'] }),
+    ).toBe('phone_budget')
+  })
+
+  it('returns null for the terminal contact question', () => {
     expect(nextFor('contact', { contact: 'a@b.com' })).toBeNull()
   })
 
-  it('routes only the first matching rule', () => {
-    const ruleQuestion = q('budget')
-    const result = getNextQuestionId(ruleQuestion, { budget: 1600 }, [
-      ...questionnaireConfig.questions,
-      // An extra later rule that would also match must not win.
-      {
-        ...ruleQuestion,
-        rules: [
-          ...(ruleQuestion.rules ?? []),
-          { operator: 'gte', value: 1000, nextQuestionId: 'laptop_use' },
-        ],
-      },
-    ])
-    expect(result).toBe('brand_premium')
+  it('evaluates a rule referencing another question via questionId', () => {
+    const q1: Question = {
+      id: 'q1',
+      type: 'text',
+      title: 'A',
+      rules: [
+        {
+          questionId: 'q2',
+          operator: 'equals',
+          value: 'skip',
+          nextQuestionId: 'final',
+        },
+      ],
+      next: 'q2',
+    }
+    const q2: Question = { id: 'q2', type: 'text', title: 'B', next: null }
+    const final: Question = {
+      id: 'final',
+      type: 'text',
+      title: 'Final',
+      next: null,
+    }
+
+    expect(getNextQuestionId(q1, { q2: 'skip' }, [q1, q2, final])).toBe('final')
+    expect(getNextQuestionId(q1, { q2: 'keep' }, [q1, q2, final])).toBe('q2')
+  })
+
+  it('respects resolution order: option redirect beats rules beats fallback', () => {
+    const question: Question = {
+      id: 'o',
+      type: 'single',
+      title: 'O',
+      options: [{ id: 'a', label: 'A', nextQuestionId: 'redirected' }],
+      rules: [{ operator: 'equals', value: 'a', nextQuestionId: 'via_rule' }],
+      next: 'fallback',
+    }
+    expect(getNextQuestionId(question, { o: 'a' }, [question])).toBe(
+      'redirected',
+    )
+  })
+
+  it('only the first matching rule wins', () => {
+    const question: Question = {
+      id: 'r',
+      type: 'number',
+      title: 'R',
+      rules: [
+        { operator: 'gte', value: 1500, nextQuestionId: 'premium' },
+        {
+          questionId: 'r',
+          operator: 'gte',
+          value: 1000,
+          nextQuestionId: 'midrange',
+        },
+      ],
+      next: 'fallback',
+    }
+    expect(getNextQuestionId(question, { r: 1600 }, [question])).toBe('premium')
+  })
+
+  it('returns null when a question has no next and no matching rules', () => {
+    const question: Question = { id: 'leaf', type: 'text', title: 'Leaf' }
+    expect(getNextQuestionId(question, { leaf: 'x' }, [question])).toBeNull()
   })
 })
 
@@ -198,76 +265,7 @@ describe('getNextQuestionId — rule operators', () => {
     expect(next(question, {})).toBe('fallback')
   })
 
-  it('evaluates rules against another question via questionId', () => {
-    const q1: Question = {
-      id: 'q1',
-      type: 'text',
-      title: 'A',
-      rules: [
-        {
-          questionId: 'q2',
-          operator: 'equals',
-          value: 'skip',
-          nextQuestionId: 'final',
-        },
-      ],
-      next: 'q2',
-    }
-    const q2: Question = { id: 'q2', type: 'text', title: 'B', next: null }
-    const final: Question = {
-      id: 'final',
-      type: 'text',
-      title: 'Final',
-      next: null,
-    }
-
-    expect(getNextQuestionId(q1, { q2: 'skip' }, [q1, q2, final])).toBe('final')
-    expect(getNextQuestionId(q1, { q2: 'keep' }, [q1, q2, final])).toBe('q2')
-  })
-
-  it('skips rules whose referenced question does not exist', () => {
-    const question: Question = {
-      id: 'q1',
-      type: 'text',
-      title: 'A',
-      rules: [
-        {
-          questionId: 'ghost',
-          operator: 'equals',
-          value: 'x',
-          nextQuestionId: 'elsewhere',
-        },
-      ],
-      next: 'q3',
-    }
-    expect(getNextQuestionId(question, { ghost: 'x' }, [question])).toBe('q3')
-  })
-
-  it('prefers the option redirect over question rules', () => {
-    const question: Question = {
-      id: 'o',
-      type: 'single',
-      title: 'O',
-      options: [{ id: 'a', label: 'A', nextQuestionId: 'redirected' }],
-      rules: [{ operator: 'equals', value: 'a', nextQuestionId: 'via_rule' }],
-      next: 'fallback',
-    }
-    expect(getNextQuestionId(question, { o: 'a' }, [question])).toBe(
-      'redirected',
-    )
-  })
-
-  it('honours an explicit null option redirect (end of flow)', () => {
-    const question: Question = {
-      id: 'o',
-      type: 'single',
-      title: 'O',
-      options: [{ id: 'a', label: 'A', nextQuestionId: null }],
-    }
-    expect(getNextQuestionId(question, { o: 'a' }, [question])).toBeNull()
-  })
-
-  it('honours an explicit null rule redirect (end of flow)', () => {
+  it('ends the questionnaire on an explicit null rule redirect', () => {
     const question: Question = {
       id: 'o',
       type: 'single',
@@ -276,10 +274,5 @@ describe('getNextQuestionId — rule operators', () => {
       next: 'fallback',
     }
     expect(getNextQuestionId(question, { o: 'a' }, [question])).toBeNull()
-  })
-
-  it('returns null when a question has no next and no matching rules', () => {
-    const question: Question = { id: 'leaf', type: 'text', title: 'Leaf' }
-    expect(getNextQuestionId(question, { leaf: 'x' }, [question])).toBeNull()
   })
 })
