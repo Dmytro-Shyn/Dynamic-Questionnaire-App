@@ -24,10 +24,17 @@ const questionnaireSlice = createSlice({
   reducers: {
     setAnswer(
       state,
-      action: PayloadAction<{ questionId: string; answer: AnswerValue }>,
+      action: PayloadAction<{
+        questionId: string
+        answer: AnswerValue | undefined
+      }>,
     ) {
       const { questionId, answer } = action.payload
-      state.answers[questionId] = answer
+      if (answer === undefined) {
+        delete state.answers[questionId]
+      } else {
+        state.answers[questionId] = answer
+      }
     },
 
     goToNextQuestion(state) {
