@@ -1,0 +1,104 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://example.com/schemas/questionnaire-config.json",
+  "title": "QuestionnaireConfig",
+  "description": "Configuration of a dynamic questionnaire. Questions form a directed graph; the next question is resolved by option redirects, then by conditional rules, then by the fallback 'next' id.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "title", "firstQuestionId", "questions"],
+  "properties": {
+    "id": { "type": "string" },
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "firstQuestionId": { "type": "string" },
+    "questions": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/Question" }
+    }
+  },
+  "definitions": {
+    "QuestionType": {
+      "enum": ["single", "multiple", "text", "number"]
+    },
+    "Option": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label"],
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "description": { "type": "string" },
+        "nextQuestionId": { "type": ["string", "null"] }
+      }
+    },
+    "ComparisonOperator": {
+      "enum": [
+        "equals",
+        "notEquals",
+        "contains",
+        "notContains",
+        "in",
+        "greaterThan",
+        "lessThan",
+        "gte",
+        "lte",
+        "gt",
+        "lt"
+      ]
+    },
+    "ConditionalRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operator", "value", "nextQuestionId"],
+      "properties": {
+        "questionId": { "type": "string" },
+        "operator": { "$ref": "#/definitions/ComparisonOperator" },
+        "value": {
+          "anyOf": [
+            { "type": "string" },
+            { "type": "number" },
+            {
+              "type": "array",
+              "items": { "type": ["string", "number"] }
+            }
+          ]
+        },
+        "nextQuestionId": { "type": ["string", "null"] }
+      }
+    },
+    "QuestionValidation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "required": { "type": "boolean" },
+        "minLength": { "type": "integer" },
+        "maxLength": { "type": "integer" },
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "pattern": { "type": "string" }
+      }
+    },
+    "Question": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "title"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "$ref": "#/definitions/QuestionType" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "placeholder": { "type": "string" },
+        "options": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Option" }
+        },
+        "next": { "type": ["string", "null"] },
+        "rules": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ConditionalRule" }
+        },
+        "validation": { "$ref": "#/definitions/QuestionValidation" }
+      }
+    }
+  }
+}
